@@ -61,7 +61,8 @@ window.__ModuleLoader__.load({
       '.km-panel .tab:hover{color:var(--dsw-alias-label-primary)}',
       '.km-panel .tab.active{background:rgba(127,127,127,.14);border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
       '.km-panel .tab .cnt{font-size:11px;opacity:.65;margin-left:5px;font-weight:400}',
-      '.km-panel .tabs .sortlab{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0 2px 0 10px;align-self:center}',
+      '.km-panel .sortrow{display:flex;align-items:center;gap:4px;margin:8px 0 4px}',
+      '.km-panel .sortlab{font-size:12px;color:var(--dsw-alias-label-secondary);margin-right:4px}',
       '.km-panel .tabs .sorter{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
       '.km-panel .tabs .sorter.active{background:rgba(127,127,127,.18);color:var(--dsw-alias-label-primary);font-weight:600}',
       '.km-panel table{table-layout:auto;width:100%}',
@@ -353,24 +354,35 @@ window.__ModuleLoader__.load({
       const sortBtn = (key, label) => h('button', {
         key: 's-' + key,
         className: 'sorter' + (sort === key ? ' active' : ''),
+        'aria-pressed': sort === key,
+        style: sort === key
+          ? { background: 'rgba(128,128,128,0.20)', fontWeight: 600, borderBottom: '2px solid currentColor' }
+          : null,
         title: key === 'score' ? '分组内按分数从高到低，没有榜单分的排在组末' : '分组内按发布时间从新到旧',
         onClick: () => setSort(key),
       }, label)
 
-      const tabButtons = h('div', { className: 'tabs' }, [
-        ...TABS.map((t) => h('button', {
-          key: t.key,
-          className: 'tab' + (tab === t.key ? ' active' : ''),
-          onClick: () => setTab(t.key),
-        }, t.label, h('span', { className: 'cnt' }, String(t.key === 'all' ? models.length : okModels.length)))),
-        h('div', { key: 'grow', className: 'grow' }),
-        h('span', { key: 'lab', className: 'sortlab' }, '排序'),
+      // 第一行：只有标签（全部模型 / 可用模型），选中项用内联样式保证一定亮
+      const tabButtons = h('div', { className: 'tabs' }, TABS.map((t) => h('button', {
+        key: t.key,
+        className: 'tab' + (tab === t.key ? ' active' : ''),
+        'aria-pressed': tab === t.key,
+        style: tab === t.key
+          ? { background: 'rgba(128,128,128,0.20)', fontWeight: 600, borderBottom: '2px solid currentColor' }
+          : null,
+        onClick: () => setTab(t.key),
+      }, t.label, h('span', { className: 'cnt' }, String(t.key === 'all' ? models.length : okModels.length)))))
+
+      // 第二行：排序方式单独一行，不和标签混在一起
+      const sortRow = h('div', { className: 'sortrow' }, [
+        h('span', { key: 'lab', className: 'sortlab' }, '排序方式'),
         sortBtn('score', '按分数'),
         sortBtn('time', '按发布时间'),
       ])
 
       return h('div', { className: 'km-panel' },
         tabButtons,
+        sortRow,
         h('div', { className: 'row' }, [
           h('button', { key: 'r', className: 'primary', disabled: !!busy, onClick: () => refresh(true) },
             busy === '检测可用性' ? '检测中…' : tab === 'ok' ? '重新检测' : '检测可用性'),
