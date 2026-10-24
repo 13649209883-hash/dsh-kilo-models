@@ -20,11 +20,14 @@ const DEFAULT_BASE = 'https://api.kilo.ai/api/gateway'
 const PROBE_TIMEOUT_MS = 20000
 const LIST_TIMEOUT_MS = 30000
 const CONCURRENCY = 4
-const STATE_VERSION = 3
+const STATE_VERSION = 4
 
-/** 分级权重：有榜单分时用完整权重，没有时把榜单的份额让给上下文。 */
-const WEIGHTS = { rank: 0.5, ctx: 0.35, fresh: 0.15 }
-const WEIGHTS_NO_RANK = { ctx: 0.7, fresh: 0.3 }
+/**
+ * 评分规则（0.5.0 起）：
+ * 上下文不参与打分，只用来"分桶"；桶内再按榜单分与版本新鲜度评分。
+ */
+const WEIGHTS = { rank: 0.7, fresh: 0.3 }
+const BASELINE = 50
 
 const dshHome = () => process.env.DSH_HOME || join(homedir(), '.dsh')
 const stateDir = () => join(dshHome(), 'kilo-models')
@@ -271,16 +274,21 @@ function mergeLeaderboard(bundled, live) {
 
 // ---------------- 分级 ----------------
 
-const TIER_ORDER = { S: 0, A: 1, B: 2, C: 3, X: 9 }
+/** 先按上下文大小分桶，桶内再评分。 */
+const BUCKETS = [
+  { key: 'M1', label: '≥1M', min: 1_000_000 },
+  { key: 'M512', label: '512K–1M', min: 512_000 },
+  { key: 'M256', label: '256K–512K', min: 256_000 },
+  { key: 'M128', label: '128K–256K', min: 128_000 },
+  { key: 'SMALL', label: '<128K', min: 0 },
+]
+const TIER_ORDER = { M1: 0, M512: 1, M256: 2, M128: 3, SMALL: 4, X: 9 }
 
-function ctxScore(ctx) {
-  if (!ctx) return 45
-  if (ctx >= 1_000_000) return 85
-  if (ctx >= 512_000) return 72
-  if (ctx >= 256_000) return 62
-  if (ctx >= 128_000) return 50
-  if (ctx >= 64_000) return 38
-  return 28
+function bucketOf(ctx) {
+  const n = Number(ctx) || 0
+  const i = BUCKETS.findIndex((b) => n >= b.min)
+  const b = BUCKETS[i < 0 ? BUCKETS.length - 1 : i]
+  return { key: b.key, label: b.label }
 }
 
 function freshScore(created) {
@@ -307,13 +315,6 @@ function rankScoreOf(leaderboard, model) {
   const exact = entries.filter((e) => e.match === id)
   if (exact.length) return preferWeb(exact)
   return preferWeb(entries.filter((e) => id.includes(e.match) || name.includes(e.match)))
-}
-
-function tierByScore(score) {
-  if (score >= 75) return { key: 'S', label: '旗舰' }
-  if (score >= 60) return { key: 'A', label: '主力' }
-  if (score >= 45) return { key: 'B', label: '中量' }
-  return { key: 'C', label: '轻量' }
 }
 
 function tagsOf(m, probe) {
@@ -345,19 +346,19 @@ function classify(models, leaderboard) {
   return models.map((m) => {
     const usable = m.status !== 'fail'
     const rank = rankScoreOf(leaderboard, m)
-    const cs = ctxScore(m.ctx)
     const fs = freshScore(m.created)
     let score
     let reason
     if (rank) {
-      score = WEIGHTS.rank * rank.score + WEIGHTS.ctx * cs + WEIGHTS.fresh * fs
-      reason = `榜 ${rank.score}·上下文 ${cs}·新 ${fs}` + (rank.from === 'web' ? '（联网）' : '')
+      score = WEIGHTS.rank * rank.score + WEIGHTS.fresh * fs
+      reason = `榜 ${rank.score}×0.7 + 新 ${fs}×0.3` + (rank.from === 'web' ? '（联网）' : '（内置）')
     } else {
-      score = WEIGHTS_NO_RANK.ctx * cs + WEIGHTS_NO_RANK.fresh * fs
-      reason = `上下文 ${cs}·新 ${fs}（无榜单分）`
+      score = 0.5 * fs + 0.5 * BASELINE
+      reason = `新 ${fs}×0.5 + 基线 50×0.5（无榜单分）`
     }
     const rounded = Math.round(score)
-    const tier = usable ? tierByScore(rounded) : { key: 'X', label: '不可用' }
+    const bucket = bucketOf(m.ctx)
+    const tier = usable ? { key: bucket.key, label: bucket.label } : { key: 'X', label: '不可用' }
     return {
       ...m,
       score: rounded,
@@ -508,7 +509,7 @@ function applyToConfig(ids) {
     const m = byId.get(id)
     if (!m) throw new Error(`名册里没有 ${id}，先刷新一次`)
     const base = m.name.replace(/\s*\(free\)\s*$/i, '').split(' · ')[0]
-    const label = [base, m.ctx ? ctxLabel(m.ctx) : '', m.tierLabel].filter(Boolean).join(' · ')
+    const label = [base, m.tierLabel].filter(Boolean).join(' · ')
     picked.push({ ...m, name: label })
   }
   if (!picked.length) throw new Error('没有选中任何模型')

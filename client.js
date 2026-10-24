@@ -44,6 +44,12 @@ window.__ModuleLoader__.load({
       '.km-panel .tier-S{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 22%,transparent);border-color:var(--dsw-alias-brand-primary)}',
       '.km-panel .tier-A{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent)}',
       '.km-panel .tier-X{background:color-mix(in srgb,var(--dsw-alias-status-error) 16%,transparent);border-color:var(--dsw-alias-status-error)}',
+      '.km-panel .tier-M1{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 20%,transparent);border-color:var(--dsw-alias-brand-primary)}',
+      '.km-panel .tier-M512{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 13%,transparent)}',
+      '.km-panel .tier-M256{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 7%,transparent)}',
+      '.km-panel .tier-M128{background:transparent}',
+      '.km-panel .tier-SMALL{background:transparent;opacity:.85}',
+      '.km-panel .tier{white-space:nowrap;min-width:auto;padding:1px 6px}',
       '.km-panel .score{font-variant-numeric:tabular-nums;font-weight:600}',
       '.km-panel .why{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}',
       '.km-panel .ms-ok{color:var(--dsw-alias-status-success)}',
@@ -315,7 +321,7 @@ window.__ModuleLoader__.load({
             ? h('div', { className: 'empty' }, '还没有探活通过的模型。点「重新检测」，或切到「全部模型」看完整清单。')
             : h('div', { className: 'cards' }, okModels.map((m) => h('div', { key: m.id, className: 'card' }, [
                 h('div', { key: 'top', className: 'top' }, [
-                  h('span', { key: 't', className: 'chip tier tier-' + m.tier, title: m.tierLabel }, m.tier),
+                  h('span', { key: 't', className: 'chip tier tier-' + m.tier, title: '上下文档' }, m.tierLabel),
                   h('span', { key: 'n', className: 'nm' }, m.name),
                 ]),
                 h('div', { key: 'i', className: 'id' }, m.id),
@@ -329,7 +335,7 @@ window.__ModuleLoader__.load({
           : h('table', null, [
               h('thead', { key: 'head' }, h('tr', null, [
                 h('th', { key: 'c', style: { width: 28 } }),
-                h('th', { key: 't', style: { width: 34 } }, '级'),
+                h('th', { key: 't', style: { width: 68 } }, '分类'),
                 h('th', { key: 's', style: { width: 44 } }, '分'),
                 h('th', { key: 'm' }, '模型'),
                 h('th', { key: 'x', style: { width: 56 } }, '上下文'),
@@ -351,7 +357,7 @@ window.__ModuleLoader__.load({
                     checked: !!sel[m.id],
                     onChange: () => toggle(m.id),
                   })),
-                  h('td', { key: 't' }, h('span', { className: 'chip tier tier-' + m.tier, title: m.tierLabel }, m.tier)),
+                  h('td', { key: 't' }, h('span', { className: 'chip tier tier-' + m.tier, title: '上下文档' }, m.tierLabel)),
                   h('td', { key: 's' }, h('span', { className: 'score' }, m.score == null ? '—' : String(m.score))),
                   h('td', { key: 'm' }, [
                     h('div', { key: 'n' }, m.name),
@@ -370,7 +376,7 @@ window.__ModuleLoader__.load({
           '操作区别：检测可用性 = 拉清单 + 逐个真发请求 + 评分；只更新列表 = 只拉清单不测；按排行榜评分 = 只重算等级。'),
         h('div', { className: 'meta' }, boardLine(state)),
         h('div', { className: 'meta' },
-          '分级 = 榜单分 ×0.5 + 上下文分 ×0.35 + 版本新鲜度 ×0.15（没有榜单分时按 上下文 0.7 / 新鲜度 0.3）；S≥75、A≥60、B≥45，探活失败标 X。'),
+          '先按上下文大小分类（≥1M / 512K–1M / 256K–512K / 128K–256K / <128K），同一类里再评分：榜单分 ×0.7 + 版本新鲜度 ×0.3；没榜单分时按 新鲜度 ×0.5 + 基线 50×0.5。检测失败标「不可用」。'),
         h('div', { className: 'meta' },
           '选择器里的文字：视觉/视频/音频 = 能读该类输入；工具 = 支持 tool calling；推理 = 有 thinking 档；到期 = 30 天内免费额度失效。'),
         h('div', { className: 'meta' },
