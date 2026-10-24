@@ -61,6 +61,9 @@ window.__ModuleLoader__.load({
       '.km-panel .tab:hover{color:var(--dsw-alias-label-primary)}',
       '.km-panel .tab.active{border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
       '.km-panel .tab .cnt{font-size:11px;opacity:.65;margin-left:5px;font-weight:400}',
+      '.km-panel .tabs .sortlab{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0 2px 0 10px;align-self:center}',
+      '.km-panel .tabs .sorter{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
+      '.km-panel .tabs .sorter.active{background:var(--dsw-alias-bg-l2,#eef1f5);color:var(--dsw-alias-label-primary);font-weight:600}',
       '.km-panel .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}',
       '.km-panel .card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}',
       '.km-panel .card .top{display:flex;gap:6px;align-items:center}',
@@ -239,12 +242,48 @@ window.__ModuleLoader__.load({
       { key: 'ok', label: '可用模型' },
     ]
 
+    const TIER_RANK = { M1: 0, M512: 1, M256: 2, M128: 3, SMALL: 4, X: 9 }
+
+    const createdMs = (m) => {
+      const t = m && m.created ? Date.parse(m.created) : NaN
+      return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY
+    }
+    const statusRank = (m) => (m.status === 'ok' ? 0 : m.status === 'limited' ? 1 : 2)
+    const hasRank = (m) => typeof m.rank === 'number'
+
+    // 两种排法：按分数（榜单分优先，没分的沉到本组末尾）/ 按发布时间（新的在前）
+    function sortRows(models, mode) {
+      const rows = models.slice()
+      rows.sort((a, b) => {
+        const t = (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9)
+        if (t !== 0) return t
+        if (mode === 'time') {
+          const ca = createdMs(a)
+          const cb = createdMs(b)
+          if (ca !== cb) return cb - ca
+          const st = statusRank(a) - statusRank(b)
+          if (st !== 0) return st
+          return (b.score || 0) - (a.score || 0) || a.id.localeCompare(b.id)
+        }
+        const ha = hasRank(a) ? 0 : 1
+        const hb = hasRank(b) ? 0 : 1
+        if (ha !== hb) return ha - hb
+        const d = (b.score || 0) - (a.score || 0)
+        if (d !== 0) return d
+        const st = statusRank(a) - statusRank(b)
+        if (st !== 0) return st
+        return createdMs(b) - createdMs(a) || a.id.localeCompare(b.id)
+      })
+      return rows
+    }
+
     function KiloPanel() {
       const { state, setState, busy, error, note, run } = usePanelState()
       const [sel, setSel] = React.useState({})
       const [useBoard, setUseBoard] = React.useState(true)
       const [tab, setTab] = React.useState('all')
       const [copied, setCopied] = React.useState('')
+      const [sort, setSort] = React.useState('score')
 
       React.useEffect(() => {
         if (!state || !state.models) return
@@ -257,6 +296,8 @@ window.__ModuleLoader__.load({
       const okModels = models.filter((m) => m.status === 'ok')
       const chosen = models.filter((m) => sel[m.id]).map((m) => m.id)
       const failCount = models.filter((m) => m.status === 'fail').length
+      const rows = sortRows(models, sort)
+      const okRows = sortRows(okModels, sort)
 
       const copy = (id) => {
         const done = () => { setCopied(id); setTimeout(() => setCopied(''), 1200) }
@@ -289,11 +330,24 @@ window.__ModuleLoader__.load({
 
       const toggle = (id) => setSel((prev) => Object.assign({}, prev, { [id]: !prev[id] }))
 
-      const tabButtons = h('div', { className: 'tabs' }, TABS.map((t) => h('button', {
-        key: t.key,
-        className: 'tab' + (tab === t.key ? ' active' : ''),
-        onClick: () => setTab(t.key),
-      }, t.label, h('span', { className: 'cnt' }, String(t.key === 'all' ? models.length : okModels.length)))))
+      const sortBtn = (key, label) => h('button', {
+        key: 's-' + key,
+        className: 'sorter' + (sort === key ? ' active' : ''),
+        title: key === 'score' ? '分组内按分数从高到低，没有榜单分的排在组末' : '分组内按发布时间从新到旧',
+        onClick: () => setSort(key),
+      }, label)
+
+      const tabButtons = h('div', { className: 'tabs' }, [
+        ...TABS.map((t) => h('button', {
+          key: t.key,
+          className: 'tab' + (tab === t.key ? ' active' : ''),
+          onClick: () => setTab(t.key),
+        }, t.label, h('span', { className: 'cnt' }, String(t.key === 'all' ? models.length : okModels.length)))),
+        h('div', { key: 'grow', className: 'grow' }),
+        h('span', { key: 'lab', className: 'sortlab' }, '排序'),
+        sortBtn('score', '按分数'),
+        sortBtn('time', '按发布时间'),
+      ])
 
       return h('div', { className: 'km-panel' },
         tabButtons,
@@ -320,7 +374,7 @@ window.__ModuleLoader__.load({
         tab === 'ok'
           ? (okModels.length === 0
             ? h('div', { className: 'empty' }, '还没有探活通过的模型。点「重新检测」，或切到「全部模型」看完整清单。')
-            : h('div', { className: 'cards' }, okModels.map((m) => h('div', { key: m.id, className: 'card' }, [
+            : h('div', { className: 'cards' }, okRows.map((m) => h('div', { key: m.id, className: 'card' }, [
                 h('div', { key: 'top', className: 'top' }, [
                   h('span', { key: 't', className: 'chip tier tier-' + m.tier, title: '上下文档' }, m.tierLabel),
                   h('span', { key: 'n', className: 'nm' }, m.name),
@@ -345,7 +399,7 @@ window.__ModuleLoader__.load({
                 h('th', { key: 'p', style: { width: 66 } }, '探活'),
                 h('th', { key: 'e', style: { width: 74 } }, '到期'),
               ])),
-              h('tbody', { key: 'body' }, models.map((m) => {
+              h('tbody', { key: 'body' }, rows.map((m) => {
                 const dead = m.status === 'fail'
                 const left = m.expires ? daysLeft(m.expires) : Infinity
                 const probeText = m.status === 'ok'
@@ -363,6 +417,7 @@ window.__ModuleLoader__.load({
                   h('td', { key: 'm' }, [
                     h('div', { key: 'n' }, m.name),
                     h('div', { key: 'i', className: 'id' }, m.id),
+                    m.created ? h('div', { key: 'd', className: 'id' }, '发布 ' + String(m.created).slice(0, 10)) : null,
                   ]),
                   h('td', { key: 'x' }, ctxLabel(m.ctx)),
                   h('td', { key: 'g' }, chipsOf(m)),
@@ -377,7 +432,7 @@ window.__ModuleLoader__.load({
           '操作区别：检测可用性 = 拉清单 + 逐个真发请求 + 评分；只更新列表 = 只拉清单不测；按排行榜评分 = 只重算等级。'),
         h('div', { className: 'meta' }, boardLine(state)),
         h('div', { className: 'meta' },
-          '先按上下文大小分类（≥1M / 512K–1M / 256K–512K / 128K–256K / <128K），同一类里再评分：榜单分 ×0.7 + 版本新鲜度 ×0.3；没榜单分时按 新鲜度 ×0.5 + 基线 50×0.5。检测失败标「不可用」。'),
+          '先按上下文大小分类（≥1M / 512K–1M / 256K–512K / 128K–256K / <128K），同一类里再评分：榜单分 ×0.7 + 版本新鲜度 ×0.3；没榜单分时按 新鲜度 ×0.5 + 基线 50×0.5。排序有两种：按分数（没榜单分的排本组末）/ 按发布时间（新的在前）。检测失败标「不可用」。'),
         h('div', { className: 'meta' },
           '选择器里的文字：视觉/视频/音频 = 能读该类输入；工具 = 支持 tool calling；推理 = 有 thinking 档；到期 = 30 天内免费额度失效。'),
         h('div', { className: 'meta' },
@@ -400,7 +455,7 @@ window.__ModuleLoader__.load({
     }
 
     exports.apply = apply
-    exports.__test = { ctxLabel, ago, daysLeft, labelsOf, parse: null }
+    exports.__test = { ctxLabel, ago, daysLeft, labelsOf, sortRows, parse: null }
     return module.exports
   },
 })
