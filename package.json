@@ -1,0 +1,45 @@
+{
+  "name": "dsh-kilo-models",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 插件：Kilo 免费模型名册——设置页一键刷新模型列表、逐个探活、自动分级，并可把结果写回 cordis.patch.yml 的 llm-pi-ai Kilo 路由。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "client.js",
+    "index.js"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "kilo",
+    "model-catalog"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/13649209883-hash/dsh-kilo-models.git"
+  },
+  "homepage": "https://github.com/13649209883-hash/dsh-kilo-models#readme",
+  "bugs": {
+    "url": "https://github.com/13649209883-hash/dsh-kilo-models/issues"
+  }
+}

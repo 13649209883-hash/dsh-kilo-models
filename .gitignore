@@ -1,0 +1,5 @@
+# 运行产物（刷新结果、配置备份都落在 ~/.dsh/kilo-models/，不进仓库）
+state.json
+*.bak
+*.log
+node_modules/
