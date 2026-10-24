@@ -79,6 +79,42 @@
 
 429 不会被当成「模型下架」，它留在原分类里、标「限流」。
 
+## 五、把这段话发给你的 agent（另一种安装方式）
+
+不想自己敲命令，就把下面整段复制给 DSH / Codex / 任何能读写本机的 agent，让它替你装、配密钥、验收到能用为止：
+
+```text
+帮我在本机安装 https://github.com/13649209883-hash/dsh-kilo-models 这个 DSH 插件，然后告诉我怎么配置 Kilo 密钥、装完怎么用免费模型。
+
+步骤：
+1. 克隆到 E:\deepseek\plugins\dsh-kilo-models（目录已存在就先问我，别直接覆盖）。
+2. junction 到 %USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-kilo-models：
+   New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-kilo-models" -Target "E:\deepseek\plugins\dsh-kilo-models"
+   已存在同名实体目录先改名成 dsh-kilo-models.local-bak，不要直接删。
+3. 在 %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml 末尾加（加之前备份，确认没有重复条目，别动文件里其它内容）：
+   - insert:
+       - id: kilo-models
+         name: dsh-kilo-models
+4. 确认 llm-pi-ai.providers.kilo 存在：baseURL https://api.kilo.ai/api/gateway、apiKeyEnv KILO_API_KEY、api openai-completions；没有就照这个补一段，models 可以先留空。
+5. 密钥：在 %USERPROFILE%\.dsh\.credentials.yaml 里加一行 KILO_API_KEY: <key>，或设成同名环境变量。key 在 https://app.kilo.ai/profile 的 API Keys 里生成。
+6. 重启 DSH 桌面端（客户端 bundle 有缓存，只刷新页面不生效），再 Ctrl+F5。
+7. 验收：GET http://127.0.0.1:<DSH端口>/dsh-kilo-models 返回 200 且 freeCount > 0；设置 → Kilo 模型 页面能打开、表格有数据。
+8. 最后用一句话告诉我：打开设置 → Kilo 模型 → 检测可用性 → 勾选 → 更新模型选择列表 → 在模型菜单里选，就能用免费模型。
+
+任何一步失败，把原始报错贴给我，不要为了绕过报错去改别的配置。
+```
+
+装完的用法见下一节；也可以让 agent 直接在最后一步告诉你。
+
+## 六、装完怎么用免费模型
+
+1. **检测可用性**：设置 → **Kilo 模型** → 点一下。它会拉清单、筛出免费模型、逐个真发一次请求（17 个大约 6–15 秒）。
+2. **挑模型**：看「分类 / 分 / 连通性」三列——先按上下文档选，再挑组内分高、显示 `可用 · xxx ms` 的；标「限流」的过一会儿再试，标「到期」的注意额度失效日。
+3. **更新模型选择列表**：勾选要用的（默认自动勾上所有可用的）→ 点「更新模型选择列表(N)」→ 重启 DSH。
+4. **在聊天里用**：聊天框的模型菜单里选它们，名字后面会带「视觉 / 工具 / 推理 / 到期」等标签。
+
+免费池的 prompt 会被记为可训练（`mayTrainOnYourPrompts: true`），别喂敏感内容；429 说明这个模型这一会儿被限流，换个用即可。
+
 ## 安装
 
 1. 克隆：
