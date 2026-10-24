@@ -59,11 +59,15 @@ window.__ModuleLoader__.load({
       '.km-panel .tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:2px}',
       '.km-panel .tab{background:transparent;border:1px solid transparent;border-bottom:2px solid transparent;border-radius:8px 8px 0 0;padding:6px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
       '.km-panel .tab:hover{color:var(--dsw-alias-label-primary)}',
-      '.km-panel .tab.active{border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.km-panel .tab.active{background:rgba(127,127,127,.14);border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
       '.km-panel .tab .cnt{font-size:11px;opacity:.65;margin-left:5px;font-weight:400}',
       '.km-panel .tabs .sortlab{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0 2px 0 10px;align-self:center}',
       '.km-panel .tabs .sorter{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
-      '.km-panel .tabs .sorter.active{background:var(--dsw-alias-bg-l2,#eef1f5);color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.km-panel .tabs .sorter.active{background:rgba(127,127,127,.18);color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.km-panel table{table-layout:auto;width:100%}',
+      '.km-panel td{vertical-align:top}',
+      '.km-panel .cell-lines{display:flex;flex-direction:column;gap:2px}',
+      '.km-panel .conn{font-size:12px;white-space:nowrap}',
       '.km-panel .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}',
       '.km-panel .card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}',
       '.km-panel .card .top{display:flex;gap:6px;align-items:center}',
@@ -330,6 +334,22 @@ window.__ModuleLoader__.load({
 
       const toggle = (id) => setSel((prev) => Object.assign({}, prev, { [id]: !prev[id] }))
 
+      // 连通性：把「具体发生了什么」写清楚，而不是只给个 ✓/✗
+      const connOf = (m) => {
+        const p = m.probe || {}
+        if (m.status === 'ok') {
+          return { text: '可用' + (p.ms ? ' · ' + p.ms + 'ms' : ''), cls: 'ms-ok', title: '探活请求返回 200，回复正常' }
+        }
+        if (m.status === 'limited') {
+          return { text: '限流 · HTTP ' + (p.status || 429), cls: 'ms-warn', title: (p.error || '服务端临时限流，稍后重试即可') }
+        }
+        if (m.status === 'fail') {
+          const err = String(p.error || '请求失败')
+          return { text: err.slice(0, 46), cls: 'ms-bad', title: err }
+        }
+        return { text: '未检测', cls: '', title: '点「检测可用性」逐个真发一次请求' }
+      }
+
       const sortBtn = (key, label) => h('button', {
         key: 's-' + key,
         className: 'sorter' + (sort === key ? ' active' : ''),
@@ -390,40 +410,41 @@ window.__ModuleLoader__.load({
           : h('table', null, [
               h('thead', { key: 'head' }, h('tr', null, [
                 h('th', { key: 'c', style: { width: 28 } }),
-                h('th', { key: 't', style: { width: 68 } }, '分类'),
-                h('th', { key: 's', style: { width: 44 } }, '分'),
+                h('th', { key: 't', style: { width: 96 } }, '分类 / 分'),
                 h('th', { key: 'm' }, '模型'),
-                h('th', { key: 'x', style: { width: 56 } }, '上下文'),
-                h('th', { key: 'g' }, '标签'),
-                h('th', { key: 'w' }, '依据'),
-                h('th', { key: 'p', style: { width: 66 } }, '探活'),
-                h('th', { key: 'e', style: { width: 74 } }, '到期'),
+                h('th', { key: 'p', style: { width: 150 } }, '连通性 / 到期'),
               ])),
               h('tbody', { key: 'body' }, rows.map((m) => {
                 const dead = m.status === 'fail'
                 const left = m.expires ? daysLeft(m.expires) : Infinity
-                const probeText = m.status === 'ok'
-                  ? (m.probe && m.probe.ms ? m.probe.ms + 'ms' : 'ok')
-                  : m.status === 'limited' ? '限流' : dead ? '✗' : '未测'
-                const expireText = !m.expires ? '—' : (left >= 0 ? m.expires + ' (' + left + '天)' : '已过期')
+                const conn = connOf(m)
+                const expireText = !m.expires ? '无到期日' : (left >= 0 ? m.expires + ' 到期（' + left + ' 天）' : '已过期')
                 return h('tr', { key: m.id, className: dead ? 'dead' : '' }, [
                   h('td', { key: 'c' }, h('input', {
                     type: 'checkbox',
                     checked: !!sel[m.id],
                     onChange: () => toggle(m.id),
                   })),
-                  h('td', { key: 't' }, h('span', { className: 'chip tier tier-' + m.tier, title: '上下文档' }, m.tierLabel)),
-                  h('td', { key: 's' }, h('span', { className: 'score' }, m.score == null ? '—' : String(m.score))),
-                  h('td', { key: 'm' }, [
+                  h('td', { key: 't' }, h('div', { className: 'cell-lines' }, [
+                    h('div', { key: 'r' }, [
+                      h('span', { className: 'chip tier tier-' + m.tier, title: ctxLabel(m.ctx) + ' 上下文' }, m.tierLabel),
+                      h('span', { className: 'score', title: m.tierReason || '' }, m.score == null ? '—' : String(m.score)),
+                    ]),
+                    h('div', { key: 'x', className: 'id' }, ctxLabel(m.ctx)),
+                  ])),
+                  h('td', { key: 'm' }, h('div', { className: 'cell-lines' }, [
                     h('div', { key: 'n' }, m.name),
                     h('div', { key: 'i', className: 'id' }, m.id),
-                    m.created ? h('div', { key: 'd', className: 'id' }, '发布 ' + String(m.created).slice(0, 10)) : null,
-                  ]),
-                  h('td', { key: 'x' }, ctxLabel(m.ctx)),
-                  h('td', { key: 'g' }, chipsOf(m)),
-                  h('td', { key: 'w' }, h('span', { className: 'why', title: m.tierReason }, m.tierReason || '')),
-                  h('td', { key: 'p', className: m.status === 'ok' ? 'ms-ok' : m.status === 'limited' ? 'ms-warn' : (dead ? 'ms-bad' : '') }, probeText),
-                  h('td', { key: 'e', className: left <= 30 ? 'ms-bad' : '' }, expireText),
+                    h('div', { key: 'd', className: 'id' }, [
+                      m.created ? '发布 ' + String(m.created).slice(0, 10) : '发布日期未知',
+                      m.rankFrom ? ' · 依据' + (m.rankFrom === 'web' ? '联网' : '内置') : '',
+                    ].join('')),
+                    h('div', { key: 'g' }, chipsOf(m)),
+                  ])),
+                  h('td', { key: 'p' }, h('div', { className: 'cell-lines' }, [
+                    h('div', { key: 'c', className: 'conn ' + conn.cls, title: conn.title }, conn.text),
+                    h('div', { key: 'e', className: 'conn ' + (left <= 30 ? 'ms-bad' : '') }, expireText),
+                  ])),
                 ])
               })),
             ])
@@ -432,7 +453,7 @@ window.__ModuleLoader__.load({
           '操作区别：检测可用性 = 拉清单 + 逐个真发请求 + 评分；只更新列表 = 只拉清单不测；按排行榜评分 = 只重算等级。'),
         h('div', { className: 'meta' }, boardLine(state)),
         h('div', { className: 'meta' },
-          '先按上下文大小分类（≥1M / 512K–1M / 256K–512K / 128K–256K / <128K），同一类里再评分：榜单分 ×0.7 + 版本新鲜度 ×0.3；没榜单分时按 新鲜度 ×0.5 + 基线 50×0.5。排序有两种：按分数（没榜单分的排本组末）/ 按发布时间（新的在前）。检测失败标「不可用」。'),
+          '先按上下文大小分类（≥1M / 512K–1M / 256K–512K / 128K–256K / <128K）；分数就是排行榜分（0–100），查不到榜单的显示「—」并排在本组末尾。排序两种：按分数 / 按发布时间。'),
         h('div', { className: 'meta' },
           '选择器里的文字：视觉/视频/音频 = 能读该类输入；工具 = 支持 tool calling；推理 = 有 thinking 档；到期 = 30 天内免费额度失效。'),
         h('div', { className: 'meta' },

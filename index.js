@@ -20,7 +20,7 @@ const DEFAULT_BASE = 'https://api.kilo.ai/api/gateway'
 const PROBE_TIMEOUT_MS = 20000
 const LIST_TIMEOUT_MS = 30000
 const CONCURRENCY = 4
-const STATE_VERSION = 4
+const STATE_VERSION = 5
 
 /**
  * 评分规则（0.5.0 起）：
@@ -349,17 +349,11 @@ function classify(models, leaderboard) {
   return models.map((m) => {
     const usable = m.status !== 'fail'
     const rank = rankScoreOf(leaderboard, m)
-    const fs = freshScore(m.created)
-    let score
-    let reason
-    if (rank) {
-      score = WEIGHTS.rank * rank.score + WEIGHTS.fresh * fs
-      reason = `榜 ${rank.score}×0.7 + 新 ${fs}×0.3` + (rank.from === 'web' ? '（联网）' : '（内置）')
-    } else {
-      score = 0.5 * fs + 0.5 * BASELINE
-      reason = `新 ${fs}×0.5 + 基线 50×0.5（无榜单分）`
-    }
-    const rounded = Math.round(score)
+    // 分数就是排行榜分：查到就用它，查不到就「没有分」（排序时沉到本组末尾），不再掺新鲜度
+    const rounded = rank ? Math.round(rank.score) : null
+    const reason = rank
+      ? `榜 ${rank.score}` + (rank.from === 'web' ? '（联网）' : '（内置）')
+      : '无榜单分'
     const bucket = bucketOf(m.ctx)
     const tier = usable ? { key: bucket.key, label: bucket.label } : { key: 'X', label: '不可用' }
     return {
@@ -375,10 +369,16 @@ function classify(models, leaderboard) {
   }).sort((a, b) => {
     const t = TIER_ORDER[a.tier] - TIER_ORDER[b.tier]
     if (t !== 0) return t
-    const rank = (m) => (m.status === 'ok' ? 0 : m.status === 'limited' ? 1 : 2)
-    const r = rank(a) - rank(b)
+    // 有分的在前，没分的沉到本组末尾
+    const ha = a.rank == null ? 1 : 0
+    const hb = b.rank == null ? 1 : 0
+    if (ha !== hb) return ha - hb
+    const d = (b.score ?? -1) - (a.score ?? -1)
+    if (d !== 0) return d
+    const st = (m) => (m.status === 'ok' ? 0 : m.status === 'limited' ? 1 : 2)
+    const r = st(a) - st(b)
     if (r !== 0) return r
-    return (b.score || 0) - (a.score || 0) || (b.ctx || 0) - (a.ctx || 0) || a.id.localeCompare(b.id)
+    return (b.ctx || 0) - (a.ctx || 0) || a.id.localeCompare(b.id)
   })
 }
 
