@@ -49,6 +49,11 @@ window.__ModuleLoader__.load({
       '.km-panel .ms-ok{color:var(--dsw-alias-status-success)}',
       '.km-panel .ms-bad{color:var(--dsw-alias-status-error)}',
       '.km-panel .empty{padding:18px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12px}',
+      '.km-panel .tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:2px}',
+      '.km-panel .tab{background:transparent;border:1px solid transparent;border-bottom:2px solid transparent;border-radius:8px 8px 0 0;padding:6px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
+      '.km-panel .tab:hover{color:var(--dsw-alias-label-primary)}',
+      '.km-panel .tab.active{border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
+      '.km-panel .tab .cnt{font-size:11px;opacity:.65;margin-left:5px;font-weight:400}',
       '.km-panel .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}',
       '.km-panel .card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}',
       '.km-panel .card .top{display:flex;gap:6px;align-items:center}',
@@ -222,10 +227,17 @@ window.__ModuleLoader__.load({
       return '分级依据：' + src + '（' + (b.entries ? b.entries.length : 0) + ' 条）' + (b.at ? ' · ' + b.at : '')
     }
 
+    const TABS = [
+      { key: 'all', label: '全部模型' },
+      { key: 'ok', label: '可用模型' },
+    ]
+
     function KiloPanel() {
       const { state, setState, busy, error, note, run } = usePanelState()
       const [sel, setSel] = React.useState({})
       const [useBoard, setUseBoard] = React.useState(true)
+      const [tab, setTab] = React.useState('all')
+      const [copied, setCopied] = React.useState('')
 
       React.useEffect(() => {
         if (!state || !state.models) return
@@ -235,9 +247,15 @@ window.__ModuleLoader__.load({
       }, [state && state.at])
 
       const models = (state && state.models) || []
+      const okModels = models.filter((m) => m.status === 'ok')
       const chosen = models.filter((m) => sel[m.id]).map((m) => m.id)
-      const okCount = models.filter((m) => m.status === 'ok').length
       const failCount = models.filter((m) => m.status === 'fail').length
+
+      const copy = (id) => {
+        const done = () => { setCopied(id); setTimeout(() => setCopied(''), 1200) }
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(id).then(done, done)
+        else done()
+      }
 
       const refresh = (probe) => run(probe ? '刷新并探测' : '刷新', async () => {
         const body = await apiPost('refresh', { probe, leaderboard: useBoard })
@@ -264,28 +282,49 @@ window.__ModuleLoader__.load({
 
       const toggle = (id) => setSel((prev) => Object.assign({}, prev, { [id]: !prev[id] }))
 
+      const tabButtons = h('div', { className: 'tabs' }, TABS.map((t) => h('button', {
+        key: t.key,
+        className: 'tab' + (tab === t.key ? ' active' : ''),
+        onClick: () => setTab(t.key),
+      }, t.label, h('span', { className: 'cnt' }, String(t.key === 'all' ? models.length : okModels.length)))))
+
       return h('div', { className: 'km-panel' },
+        tabButtons,
         h('div', { className: 'row' }, [
           h('button', { key: 'r', className: 'primary', disabled: !!busy, onClick: () => refresh(true) },
-            busy === '刷新并探测' ? '探测中…' : '刷新并探测'),
+            busy === '刷新并探测' ? '探测中…' : tab === 'ok' ? '重新探测' : '刷新并探测'),
           h('button', { key: 'l', disabled: !!busy, onClick: () => refresh(false) },
             busy === '刷新' ? '刷新中…' : '仅拉清单'),
           h('button', { key: 'b', disabled: !!busy || !models.length, onClick: relist },
             busy === '联网查榜单' ? '查询中…' : '联网查榜单'),
-          h('button', { key: 'a', disabled: !!busy || !chosen.length, onClick: apply },
-            busy === '写回配置' ? '写入中…' : '写回 DSH 配置（' + chosen.length + '）'),
-          h('label', { key: 't', className: 'toggle', title: '刷新时顺带用 DeepSeek 联网搜索查榜单分数' },
+          tab === 'all' ? h('button', { key: 'a', disabled: !!busy || !chosen.length, onClick: apply },
+            busy === '写回配置' ? '写入中…' : '写回 DSH 配置（' + chosen.length + '）') : null,
+          tab === 'all' ? h('label', { key: 't', className: 'toggle', title: '刷新时顺带用 DeepSeek 联网搜索查榜单分数' },
             h('input', { type: 'checkbox', checked: useBoard, onChange: (e) => setUseBoard(e.target.checked) }),
-            '刷新时联网查榜单'),
+            '刷新时联网查榜单') : null,
           h('div', { key: 'g', className: 'grow' }),
           h('span', { key: 'm', className: 'meta' },
             state && state.at
-              ? '上次刷新 ' + ago(state.at) + ' · 免费 ' + (state.freeCount || models.length) + '/' + (state.total || '?') + ' · 可用 ' + okCount + ' · 失败 ' + failCount
+              ? '上次刷新 ' + ago(state.at) + ' · 免费 ' + (state.freeCount || models.length) + '/' + (state.total || '?') + ' · 可用 ' + okModels.length + ' · 失败 ' + failCount
               : '还没有数据'),
         ]),
         error ? h('div', { className: 'err' }, error) : null,
         note ? h('div', { className: 'oknote' }, note) : null,
-        models.length === 0
+        tab === 'ok'
+          ? (okModels.length === 0
+            ? h('div', { className: 'empty' }, '还没有探活通过的模型。点「重新探测」，或切到「全部模型」看完整清单。')
+            : h('div', { className: 'cards' }, okModels.map((m) => h('div', { key: m.id, className: 'card' }, [
+                h('div', { key: 'top', className: 'top' }, [
+                  h('span', { key: 't', className: 'chip tier tier-' + m.tier, title: m.tierLabel }, m.tier),
+                  h('span', { key: 'n', className: 'nm' }, m.name),
+                ]),
+                h('div', { key: 'i', className: 'id' }, m.id),
+                h('div', { key: 'g' }, chipsOf(m)),
+                h('div', { key: 'x', className: 'meta' },
+                  ctxLabel(m.ctx) + ' 上下文 · 分 ' + (m.score == null ? '—' : m.score) + ' · ' + (m.tierReason || '')),
+                h('div', { key: 'b' }, h('button', { onClick: () => copy(m.id), title: '复制模型 id' }, copied === m.id ? '已复制' : '复制 id')),
+              ]))))
+          : models.length === 0
           ? h('div', { className: 'empty' }, busy ? '正在向 Kilo 拉取模型清单…' : '点「刷新并探测」拉一次 Kilo 免费模型清单。')
           : h('table', null, [
               h('thead', { key: 'head' }, h('tr', null, [
@@ -337,47 +376,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** 单独一页：只看现在能用的模型。 */
-    function AvailablePanel() {
-      const { state, busy, error, note, run } = usePanelState()
-      const [copied, setCopied] = React.useState('')
-      const models = ((state && state.models) || []).filter((m) => m.status === 'ok')
-
-      const copy = (id) => {
-        const done = () => { setCopied(id); setTimeout(() => setCopied(''), 1200) }
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(id).then(done, done)
-        else done()
-      }
-
-      return h('div', { className: 'km-panel' },
-        h('div', { className: 'row' }, [
-          h('button', { key: 'r', className: 'primary', disabled: !!busy, onClick: () => run('探测', async () => {
-            const body = await apiPost('refresh', { probe: true, leaderboard: false })
-            broadcast()
-            return body
-          }) }, busy === '探测' ? '探测中…' : '重新探测'),
-          h('div', { key: 'g', className: 'grow' }),
-          h('span', { key: 'm', className: 'meta' },
-            models.length ? '可用 ' + models.length + ' 个' + (state && state.at ? ' · 数据来自 ' + ago(state.at) : '') : '没有可用模型'),
-        ]),
-        error ? h('div', { className: 'err' }, error) : null,
-        note ? h('div', { className: 'oknote' }, note) : null,
-        models.length === 0
-          ? h('div', { className: 'empty' }, '还没有探活通过的模型。去「Kilo 模型」页点「刷新并探测」。')
-          : h('div', { className: 'cards' }, models.map((m) => h('div', { key: m.id, className: 'card' }, [
-              h('div', { key: 'top', className: 'top' }, [
-                h('span', { key: 't', className: 'chip tier tier-' + m.tier }, m.tier),
-                h('span', { key: 'n', className: 'nm' }, m.name),
-              ]),
-              h('div', { key: 'i', className: 'id' }, m.id),
-              h('div', { key: 'g' }, chipsOf(m)),
-              h('div', { key: 'x', className: 'meta' },
-                ctxLabel(m.ctx) + ' 上下文 · 分 ' + (m.score == null ? '—' : m.score) + ' · ' + (m.tierReason || '')),
-              h('div', { key: 'b' }, h('button', { onClick: () => copy(m.id), title: '复制模型 id' }, copied === m.id ? '已复制' : '复制 id')),
-            ]))),
-      )
-    }
-
     function apply(ctx) {
       const slots = ctx.get('slots')
       if (!slots) return
@@ -385,11 +383,7 @@ window.__ModuleLoader__.load({
         { name: 'settings.section', id: 'kilo-models', order: 26, label: 'Kilo 模型' },
         () => h(KiloPanel),
       ))
-      slots.inject('settings.section', () => slots.register(
-        { name: 'settings.section', id: 'kilo-models-available', order: 27, label: '可用模型' },
-        () => h(AvailablePanel),
-      ))
-      // 模型选择器（composer 与 /model）里的名称位：名字后面挂能力徽标
+      // 模型选择器（composer 与 /model）里的名称位：名字后面挂能力标签
       slots.inject('conversation.input.model.label', () => slots.register(
         { name: 'conversation.input.model.label' },
         ModelLabel,
