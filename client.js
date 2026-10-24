@@ -2,7 +2,7 @@
  * dsh-kilo-models — Client 半边。
  *
  * 三块界面：
- *   1. 设置 →「Kilo 模型」：刷新 / 探活 / 联网查榜单 / 写回配置，表格带分数与分级依据；
+ *   1. 设置 →「Kilo 模型」：刷新 / 探活 / 按排行榜评分 / 加入选择器，表格带分数与分级依据；
  *   2. 设置 →「可用模型」：只列探活通过的模型，方便挑；
  *   3. 模型选择器的名称位（conversation.input.model.label）：在模型名后面挂能力徽标
  *      （👁 视觉 / 🎬 视频 / 🔊 音频 / 🧰 工具 / 🧠 推理 / ⏳ 即将到期）。
@@ -257,7 +257,7 @@ window.__ModuleLoader__.load({
         else done()
       }
 
-      const refresh = (probe) => run(probe ? '刷新并探测' : '刷新', async () => {
+      const refresh = (probe) => run(probe ? '检测可用性' : '刷新', async () => {
         const body = await apiPost('refresh', { probe, leaderboard: probe ? useBoard : false })
         setState(body.state)
         setSel({})
@@ -267,14 +267,14 @@ window.__ModuleLoader__.load({
           : '已刷新：' + body.state.freeCount + ' 个免费模型（未探测）')
       })
 
-      const relist = () => run('联网查榜单', async () => {
+      const relist = () => run('按排行榜评分', async () => {
         const body = await apiPost('leaderboard', {})
         setState(body.state)
         broadcast()
         setNote('榜单已更新：来源 ' + body.state.leaderboard.source + '，' + body.state.leaderboard.entries.length + ' 条。' + (body.state.leaderboard.note || ''))
       })
 
-      const apply = () => run('写回配置', async () => {
+      const apply = () => run('加入选择器', async () => {
         if (!chosen.length) throw new Error('先勾选要写回的模型')
         const body = await apiPost('apply', { ids: chosen })
         setNote('已写回 ' + body.result.written + ' 个模型到 cordis.patch.yml（备份：' + body.result.backup + '）。配置热加载后模型选择器就会更新。')
@@ -292,16 +292,16 @@ window.__ModuleLoader__.load({
         tabButtons,
         h('div', { className: 'row' }, [
           h('button', { key: 'r', className: 'primary', disabled: !!busy, onClick: () => refresh(true) },
-            busy === '刷新并探测' ? '探测中…' : tab === 'ok' ? '重新探测' : '刷新并探测'),
+            busy === '检测可用性' ? '检测中…' : tab === 'ok' ? '重新检测' : '检测可用性'),
           h('button', { key: 'l', disabled: !!busy, onClick: () => refresh(false) },
-            busy === '刷新' ? '刷新中…' : '仅拉清单'),
+            busy === '刷新' ? '拉取中…' : '只更新列表'),
           h('button', { key: 'b', disabled: !!busy || !models.length, onClick: relist },
-            busy === '联网查榜单' ? '查询中…' : '联网查榜单'),
+            busy === '按排行榜评分' ? '评分中…' : '按排行榜评分'),
           tab === 'all' ? h('button', { key: 'a', disabled: !!busy || !chosen.length, onClick: apply },
-            busy === '写回配置' ? '写入中…' : '写回 DSH 配置（' + chosen.length + '）') : null,
+            busy === '加入选择器' ? '写入中…' : '加入选择器（' + chosen.length + '）') : null,
           tab === 'all' ? h('label', { key: 't', className: 'toggle', title: '刷新时顺带用 DeepSeek 联网搜索查榜单分数' },
             h('input', { type: 'checkbox', checked: useBoard, onChange: (e) => setUseBoard(e.target.checked) }),
-            '刷新时联网查榜单') : null,
+            '评分时联网查排行榜') : null,
           h('div', { key: 'g', className: 'grow' }),
           h('span', { key: 'm', className: 'meta' },
             state && state.at
@@ -312,7 +312,7 @@ window.__ModuleLoader__.load({
         note ? h('div', { className: 'oknote' }, note) : null,
         tab === 'ok'
           ? (okModels.length === 0
-            ? h('div', { className: 'empty' }, '还没有探活通过的模型。点「重新探测」，或切到「全部模型」看完整清单。')
+            ? h('div', { className: 'empty' }, '还没有探活通过的模型。点「重新检测」，或切到「全部模型」看完整清单。')
             : h('div', { className: 'cards' }, okModels.map((m) => h('div', { key: m.id, className: 'card' }, [
                 h('div', { key: 'top', className: 'top' }, [
                   h('span', { key: 't', className: 'chip tier tier-' + m.tier, title: m.tierLabel }, m.tier),
@@ -325,7 +325,7 @@ window.__ModuleLoader__.load({
                 h('div', { key: 'b' }, h('button', { onClick: () => copy(m.id), title: '复制模型 id' }, copied === m.id ? '已复制' : '复制 id')),
               ]))))
           : models.length === 0
-          ? h('div', { className: 'empty' }, busy ? '正在向 Kilo 拉取模型清单…' : '点「刷新并探测」拉一次 Kilo 免费模型清单。')
+          ? h('div', { className: 'empty' }, busy ? '正在向 Kilo 拉取模型清单…' : '点「检测可用性」拉一次 Kilo 免费模型清单。')
           : h('table', null, [
               h('thead', { key: 'head' }, h('tr', null, [
                 h('th', { key: 'c', style: { width: 28 } }),
@@ -366,6 +366,8 @@ window.__ModuleLoader__.load({
               })),
             ])
         ,
+        h('div', { className: 'meta' },
+          '操作区别：检测可用性 = 拉清单 + 逐个真发请求 + 评分；只更新列表 = 只拉清单不测；按排行榜评分 = 只重算等级。'),
         h('div', { className: 'meta' }, boardLine(state)),
         h('div', { className: 'meta' },
           '分级 = 榜单分 ×0.5 + 上下文分 ×0.35 + 版本新鲜度 ×0.15（没有榜单分时按 上下文 0.7 / 新鲜度 0.3）；S≥75、A≥60、B≥45，探活失败标 X。'),
