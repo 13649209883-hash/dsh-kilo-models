@@ -274,7 +274,7 @@ window.__ModuleLoader__.load({
         setNote('榜单已更新：来源 ' + body.state.leaderboard.source + '，' + body.state.leaderboard.entries.length + ' 条。' + (body.state.leaderboard.note || ''))
       })
 
-      const apply = () => run('加入选择器', async () => {
+      const apply = () => run('更新模型选择列表', async () => {
         if (!chosen.length) throw new Error('先勾选要写回的模型')
         const body = await apiPost('apply', { ids: chosen })
         setNote('已写回 ' + body.result.written + ' 个模型到 cordis.patch.yml（备份：' + body.result.backup + '）。配置热加载后模型选择器就会更新。')
@@ -298,7 +298,7 @@ window.__ModuleLoader__.load({
           h('button', { key: 'b', disabled: !!busy || !models.length, onClick: relist },
             busy === '按排行榜评分' ? '评分中…' : '按排行榜评分'),
           tab === 'all' ? h('button', { key: 'a', disabled: !!busy || !chosen.length, onClick: apply },
-            busy === '加入选择器' ? '写入中…' : '加入选择器（' + chosen.length + '）') : null,
+            busy === '更新模型选择列表' ? '写入中…' : '更新模型选择列表（' + chosen.length + '）') : null,
           tab === 'all' ? h('label', { key: 't', className: 'toggle', title: '刷新时顺带用 DeepSeek 联网搜索查榜单分数' },
             h('input', { type: 'checkbox', checked: useBoard, onChange: (e) => setUseBoard(e.target.checked) }),
             '评分时联网查排行榜') : null,
