@@ -87,9 +87,9 @@
 帮我在本机安装 https://github.com/13649209883-hash/dsh-kilo-models 这个 DSH 插件，然后告诉我怎么配置 Kilo 密钥、装完怎么用免费模型。
 
 步骤：
-1. 克隆到 E:\deepseek\plugins\dsh-kilo-models（目录已存在就先问我，别直接覆盖）。
-2. junction 到 %USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-kilo-models：
-   New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-kilo-models" -Target "E:\deepseek\plugins\dsh-kilo-models"
+1. 克隆到我工作区下的 plugins/dsh-kilo-models（**放哪个目录先问我，不要默认某个路径**；目录已存在就先问，别直接覆盖）。
+2. junction 到 %USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-kilo-models，Target 用上一步实际克隆到的目录：
+   New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-kilo-models" -Target "<上一步克隆到的实际路径>"
    已存在同名实体目录先改名成 dsh-kilo-models.local-bak，不要直接删。
 3. 在 %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml 末尾加（加之前备份，确认没有重复条目，别动文件里其它内容）：
    - insert:
@@ -115,20 +115,22 @@
 
 免费池的 prompt 会被记为可训练（`mayTrainOnYourPrompts: true`），别喂敏感内容；429 说明这个模型这一会儿被限流，换个用即可。
 
-## 安装
+## 附：手动安装（不想让 agent 动手时用）
 
 1. 克隆：
 
    ```powershell
-   git clone git@github.com:13649209883-hash/dsh-kilo-models.git E:\deepseek\plugins\dsh-kilo-models
+   git clone git@github.com:13649209883-hash/dsh-kilo-models.git <你放插件的目录>\dsh-kilo-models
    ```
+
+   把 `<你放插件的目录>` 换成自己的位置，下面都以这个实际路径为准。
 
 2. 链接进 DSH profile（junction，改源码不用重拷）：
 
    ```powershell
    New-Item -ItemType Junction `
      -Path "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-kilo-models" `
-     -Target "E:\deepseek\plugins\dsh-kilo-models"
+     -Target "<你放插件的目录>\dsh-kilo-models"
    ```
 
 3. 在 `~/.dsh/profiles/desktop/cordis.patch.yml` 末尾加：
