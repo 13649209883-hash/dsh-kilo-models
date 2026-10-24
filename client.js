@@ -53,8 +53,8 @@ window.__ModuleLoader__.load({
       '.km-panel .card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}',
       '.km-panel .card .top{display:flex;gap:6px;align-items:center}',
       '.km-panel .card .nm{font-weight:600;font-size:13px}',
-      '.km-label{display:inline-flex;align-items:center;gap:3px;min-width:0}',
-      '.km-badge{font-size:10px;line-height:1;opacity:.75;letter-spacing:-1px}',
+      '.km-label{display:inline-flex;align-items:baseline;gap:5px;min-width:0;max-width:100%}',
+      '.km-tags{font-size:10px;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     ].join('\n')
 
     function ensureCss() {
@@ -140,19 +140,16 @@ window.__ModuleLoader__.load({
       return Math.ceil((t - Date.now()) / 86400000)
     }
 
-    const BADGES = [
-      ['image', '👁', '支持图片输入'],
-      ['video', '🎬', '支持视频输入'],
-      ['audio', '🔊', '支持音频输入'],
-    ]
-
-    function badgesOf(m) {
+    /** 能力文字标签：选择器里空间有限，用两个字的中文，一眼能懂。 */
+    function labelsOf(m) {
       const out = []
       const mods = (m && m.mods) || []
-      for (const [key, glyph, title] of BADGES) if (mods.includes(key)) out.push({ glyph, title })
-      if (m && m.tools) out.push({ glyph: '🧰', title: '支持工具调用' })
-      if (m && m.reasoning) out.push({ glyph: '🧠', title: '支持推理' })
-      if (m && m.expires && daysLeft(m.expires) <= 30) out.push({ glyph: '⏳', title: '即将到期：' + m.expires })
+      if (mods.includes('image')) out.push('视觉')
+      if (mods.includes('video')) out.push('视频')
+      if (mods.includes('audio')) out.push('音频')
+      if (m && m.tools) out.push('工具')
+      if (m && m.reasoning) out.push('推理')
+      if (m && m.expires && daysLeft(m.expires) <= 30) out.push('到期')
       return out
     }
 
@@ -160,7 +157,7 @@ window.__ModuleLoader__.load({
       return (m.tags || []).map((t) => h('span', { key: t, className: 'chip' }, t))
     }
 
-    /** 模型选择器里的名称位：名字 + 能力徽标。 */
+    /** 模型选择器里的名称位：名字 + 能力文字（最多 4 个，多出来的记 +N）。 */
     function ModelLabel(props) {
       const model = (props && props.model) || {}
       const name = model.name || model.id
@@ -177,11 +174,13 @@ window.__ModuleLoader__.load({
       }, [])
       const info = cache.byId.get(model.id)
       if (!info) return h('span', { className: 'km-label' }, name)
-      const badges = badgesOf(info)
-      if (!badges.length) return h('span', { className: 'km-label' }, name)
-      return h('span', { className: 'km-label' },
+      const labels = labelsOf(info)
+      if (!labels.length) return h('span', { className: 'km-label' }, name)
+      const shown = labels.slice(0, 4)
+      const rest = labels.length - shown.length
+      return h('span', { className: 'km-label', title: labels.join('、') },
         name,
-        badges.map((b, i) => h('span', { key: i, className: 'km-badge', title: b.title }, b.glyph)),
+        h('span', { className: 'km-tags' }, shown.join('·') + (rest > 0 ? ` +${rest}` : '')),
       )
     }
 
@@ -332,6 +331,8 @@ window.__ModuleLoader__.load({
         h('div', { className: 'meta' },
           '分级 = 榜单分 ×0.5 + 上下文分 ×0.35 + 版本新鲜度 ×0.15（没有榜单分时按 上下文 0.7 / 新鲜度 0.3）；S≥75、A≥60、B≥45，探活失败标 X。'),
         h('div', { className: 'meta' },
+          '选择器里的文字：视觉/视频/音频 = 能读该类输入；工具 = 支持 tool calling；推理 = 有 thinking 档；到期 = 30 天内免费额度失效。'),
+        h('div', { className: 'meta' },
           '所有 Kilo 免费通道都会把 prompt 记为可训练（mayTrainOnYourPrompts=true），别喂敏感内容。'),
       )
     }
@@ -396,7 +397,7 @@ window.__ModuleLoader__.load({
     }
 
     exports.apply = apply
-    exports.__test = { ctxLabel, ago, daysLeft, badgesOf, parse: null }
+    exports.__test = { ctxLabel, ago, daysLeft, labelsOf, parse: null }
     return module.exports
   },
 })
