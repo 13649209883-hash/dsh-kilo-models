@@ -1,6 +1,6 @@
 {
   "name": "dsh-kilo-models",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "DeepSeek Harness 插件：一键刷新/探活/分级 Kilo 免费模型并写回配置，模型选择器里显示能力文字。",
   "type": "module",
   "main": "index.js",
@@ -36,10 +36,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/13649209883-hash/dsh-kilo-models.git"
+    "url": "git+ssh://git@github.com/SkyCrown-dev/dsh-kilo-models.git"
   },
-  "homepage": "https://github.com/13649209883-hash/dsh-kilo-models#readme",
+  "homepage": "https://github.com/SkyCrown-dev/dsh-kilo-models#readme",
   "bugs": {
-    "url": "https://github.com/13649209883-hash/dsh-kilo-models/issues"
+    "url": "https://github.com/SkyCrown-dev/dsh-kilo-models/issues"
   }
 }

@@ -84,7 +84,7 @@
 不想自己敲命令，就把下面整段复制给 DSH / Codex / 任何能读写本机的 agent，让它替你装、配密钥、验收到能用为止：
 
 ```text
-帮我在本机安装 https://github.com/13649209883-hash/dsh-kilo-models 这个 DSH 插件，然后告诉我怎么配置 Kilo 密钥、装完怎么用免费模型。
+帮我在本机安装 https://github.com/SkyCrown-dev/dsh-kilo-models 这个 DSH 插件，然后告诉我怎么配置 Kilo 密钥、装完怎么用免费模型。
 
 步骤：
 1. 克隆到我工作区下的 plugins/dsh-kilo-models（**放哪个目录先问我，不要默认某个路径**；目录已存在就先问，别直接覆盖）。
@@ -120,7 +120,7 @@
 1. 克隆：
 
    ```powershell
-   git clone git@github.com:13649209883-hash/dsh-kilo-models.git <你放插件的目录>\dsh-kilo-models
+   git clone git@github.com:SkyCrown-dev/dsh-kilo-models.git <你放插件的目录>\dsh-kilo-models
    ```
 
    把 `<你放插件的目录>` 换成自己的位置，下面都以这个实际路径为准。

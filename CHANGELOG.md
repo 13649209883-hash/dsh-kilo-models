@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.8.3 — 2026-10-24
+
+- 仓库随 GitHub 账号迁移到 `SkyCrown-dev`：README 里的 clone 地址、`package.json` 的 repository/homepage/bugs 全部换成新地址。
+
 ## 0.8.2 — 2026-10-24
 
 - agent 提示词与手动安装都改成占位路径：不再写死 `E:\deepseek\...`，改为「先问我把插件放哪，Target 用实际克隆路径」，别的用户照抄也不会装错地方。
