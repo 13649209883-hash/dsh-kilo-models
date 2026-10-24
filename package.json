@@ -1,6 +1,6 @@
 {
   "name": "dsh-kilo-models",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "DeepSeek Harness 插件：一键刷新/探活/分级 Kilo 免费模型并写回配置，模型选择器里显示能力文字。",
   "type": "module",
   "main": "index.js",

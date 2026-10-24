@@ -258,7 +258,7 @@ window.__ModuleLoader__.load({
       }
 
       const refresh = (probe) => run(probe ? '刷新并探测' : '刷新', async () => {
-        const body = await apiPost('refresh', { probe, leaderboard: useBoard })
+        const body = await apiPost('refresh', { probe, leaderboard: probe ? useBoard : false })
         setState(body.state)
         setSel({})
         broadcast()
