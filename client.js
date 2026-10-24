@@ -1,11 +1,11 @@
 /**
  * dsh-kilo-models — Client 半边。
  *
- * 三块界面：
- *   1. 设置 →「Kilo 模型」：刷新 / 探活 / 按排行榜评分 / 加入选择器，表格带分数与分级依据；
- *   2. 设置 →「可用模型」：只列探活通过的模型，方便挑；
- *   3. 模型选择器的名称位（conversation.input.model.label）：在模型名后面挂能力徽标
- *      （👁 视觉 / 🎬 视频 / 🔊 音频 / 🧰 工具 / 🧠 推理 / ⏳ 即将到期）。
+ * 两块界面：
+ *   1. 设置 →「Kilo 模型」：检测可用性 / 只更新列表 / 按排行榜评分 / 更新模型选择列表，
+ *      页内两个标签（全部模型 / 可用模型）切换，表格带分数与分级依据；
+ *   2. 模型选择器的名称位（conversation.input.model.label）：在模型名后面挂能力标签
+ *      （视觉 / 视频 / 音频 / 工具 / 推理 / 到期）。
  *
  * 以 dsh.client bundle 格式加载：window.__ModuleLoader__.load({ id, factory })，
  * id 必须等于 loader entry 名（dsh-kilo-models）。
