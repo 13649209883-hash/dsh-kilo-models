@@ -54,6 +54,7 @@ window.__ModuleLoader__.load({
       '.km-panel .why{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}',
       '.km-panel .ms-ok{color:var(--dsw-alias-status-success)}',
       '.km-panel .ms-bad{color:var(--dsw-alias-status-error)}',
+      '.km-panel .ms-warn{color:var(--dsw-alias-status-warning,#d97706)}',
       '.km-panel .empty{padding:18px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12px}',
       '.km-panel .tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:2px}',
       '.km-panel .tab{background:transparent;border:1px solid transparent;border-bottom:2px solid transparent;border-radius:8px 8px 0 0;padding:6px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}',
@@ -349,7 +350,7 @@ window.__ModuleLoader__.load({
                 const left = m.expires ? daysLeft(m.expires) : Infinity
                 const probeText = m.status === 'ok'
                   ? (m.probe && m.probe.ms ? m.probe.ms + 'ms' : 'ok')
-                  : dead ? '✗' : '未测'
+                  : m.status === 'limited' ? '限流' : dead ? '✗' : '未测'
                 const expireText = !m.expires ? '—' : (left >= 0 ? m.expires + ' (' + left + '天)' : '已过期')
                 return h('tr', { key: m.id, className: dead ? 'dead' : '' }, [
                   h('td', { key: 'c' }, h('input', {
@@ -366,7 +367,7 @@ window.__ModuleLoader__.load({
                   h('td', { key: 'x' }, ctxLabel(m.ctx)),
                   h('td', { key: 'g' }, chipsOf(m)),
                   h('td', { key: 'w' }, h('span', { className: 'why', title: m.tierReason }, m.tierReason || '')),
-                  h('td', { key: 'p', className: m.status === 'ok' ? 'ms-ok' : (dead ? 'ms-bad' : '') }, probeText),
+                  h('td', { key: 'p', className: m.status === 'ok' ? 'ms-ok' : m.status === 'limited' ? 'ms-warn' : (dead ? 'ms-bad' : '') }, probeText),
                   h('td', { key: 'e', className: left <= 30 ? 'ms-bad' : '' }, expireText),
                 ])
               })),

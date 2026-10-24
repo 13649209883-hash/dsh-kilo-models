@@ -166,7 +166,9 @@ async function probeModel(modelId) {
         const j = JSON.parse(text)
         detail = j?.error?.message || j?.message || detail
       } catch { /* 原文即可 */ }
-      return { ok: false, ms, error: `HTTP ${res.status}: ${detail}` }
+      // 429/408/5xx 是服务端临时状况，不等于模型没了——标成 limited，别当成不可用
+      const transient = res.status === 429 || res.status === 408 || res.status >= 500
+      return { ok: false, ms, transient, status: res.status, error: `HTTP ${res.status}: ${detail}` }
     }
     let content = ''
     try {
@@ -329,6 +331,7 @@ function tagsOf(m, probe) {
   if (/kilo-auto/i.test(m.id)) tags.push('自动选型')
   if (m.tools) tags.push('工具')
   if (m.reasoning) tags.push('推理')
+  if (m.status === 'limited') tags.push('限流')
   if (m.expires && daysLeft(m.expires) <= 30) tags.push('即将到期')
   if (probe?.ok && probe.ms <= 1500) tags.push('极速')
   else if (probe?.ok && probe.ms >= 8000) tags.push('慢')
@@ -372,6 +375,9 @@ function classify(models, leaderboard) {
   }).sort((a, b) => {
     const t = TIER_ORDER[a.tier] - TIER_ORDER[b.tier]
     if (t !== 0) return t
+    const rank = (m) => (m.status === 'ok' ? 0 : m.status === 'limited' ? 1 : 2)
+    const r = rank(a) - rank(b)
+    if (r !== 0) return r
     return (b.score || 0) - (a.score || 0) || (b.ctx || 0) - (a.ctx || 0) || a.id.localeCompare(b.id)
   })
 }
@@ -394,7 +400,7 @@ async function runRefresh(ctx, { probe = true, leaderboard = true } = {}) {
         const i = cursor++
         const m = models[i]
         const result = await probeModel(m.id)
-        m.status = result.ok ? 'ok' : 'fail'
+        m.status = result.ok ? 'ok' : result.transient ? 'limited' : 'fail'
         m.probe = { ok: result.ok, ms: result.ms, reply: result.reply || '', error: result.error || '' }
         m.checkedAt = new Date().toISOString()
         probed++
