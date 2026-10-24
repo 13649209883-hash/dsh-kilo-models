@@ -56,6 +56,11 @@ function apiKey() {
   }
 }
 
+// 换聚合站只改环境变量：KILO_MODELS_BASE=…、KILO_MODELS_PROVIDER=<cordis.patch.yml 里的 provider 名>
+function providerName() {
+  return process.env.KILO_MODELS_PROVIDER || 'kilo'
+}
+
 function baseUrl() {
   return (process.env.KILO_MODELS_BASE || DEFAULT_BASE).replace(/\/+$/, '')
 }
@@ -480,19 +485,22 @@ function yamlBlock(models, indent = '        ') {
 /** 把 cordis.patch.yml 里 llm-pi-ai.providers.kilo.models 整段换掉，其余文本一字不动。 */
 function spliceModels(text, block) {
   const lines = text.split('\n')
-  const kiloAt = lines.findIndex((l) => /^\s{6}kilo:\s*$/.test(l))
-  if (kiloAt < 0) throw new Error('cordis.patch.yml 里找不到 providers.kilo 区块')
+  const name = providerName().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const kiloAt = lines.findIndex((l) => new RegExp('^\\s{6}' + name + ':\\s*$').test(l))
+  if (kiloAt < 0) throw new Error('cordis.patch.yml 里找不到 providers.' + providerName() + ' 区块')
   let start = -1
   for (let i = kiloAt + 1; i < lines.length; i++) {
     const line = lines[i]
     if (/^\s{8}models:\s*$/.test(line)) { start = i; break }
     if (line.trim() && !/^\s{8,}/.test(line)) break
   }
-  if (start < 0) throw new Error('providers.kilo 下找不到 models 列表')
+  if (start < 0) throw new Error('providers.' + providerName() + ' 下找不到 models 列表')
   let end = lines.length
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i]
-    if (line.trim() === '' || /^\s{8,}/.test(line)) continue
+    if (line.trim() === '') continue
+    if (/^\s{10,}/.test(line)) continue
+    if (/^\s{0,8}- /.test(line)) continue
     end = i
     break
   }
