@@ -1,0 +1,23 @@
+{
+  "updated": "2026-10-24",
+  "note": "人工整理的家族参考分（0–100）：按公开榜单里能查到的水平、家族规模与定位折算，不是精确 Elo。联网查榜单成功后，同名家族会被搜索到的分数覆盖。",
+  "entries": [
+    { "match": "nemotron-3-ultra", "score": 88 },
+    { "match": "nemotron-3.5-super-vl", "score": 84 },
+    { "match": "nemotron-3-super-120b", "score": 80 },
+    { "match": "laguna-s", "score": 78 },
+    { "match": "nemotron-3.5-lightning", "score": 72 },
+    { "match": "laguna-xs", "score": 70 },
+    { "match": "nemotron-3-nano-omni", "score": 66 },
+    { "match": "kilo-auto", "score": 64 },
+    { "match": "north-mini-code", "score": 62 },
+    { "match": "dots-3-note-preview", "score": 60 },
+    { "match": "beam-free", "score": 57 },
+    { "match": "nemotron-3.5-content-safety", "score": 55 },
+    { "match": "openrouter", "score": 53 },
+    { "match": "glyph-cluster", "score": 51 },
+    { "match": "flint-v1.0", "score": 49 },
+    { "match": "xing4.0", "score": 47 },
+    { "match": "lfm-2.5", "score": 38 }
+  ]
+}

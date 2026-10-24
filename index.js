@@ -1,17 +1,13 @@
 /**
- * dsh-kilo-models — Kilo 免费模型名册：一键刷新 / 逐个探活 / 自动分级 / 写回 DSH 配置。
+ * dsh-kilo-models — Kilo 免费模型名册：一键刷新 / 逐个探活 / 综合分级 / 写回 DSH 配置。
  *
  * 宿主半边（本文件）：
  *   - 从 Kilo 网关 GET /models 拉全量清单，按 isFree 过滤出免费模型；
  *   - 对每个免费模型 POST /chat/completions 发一次 "Reply with exactly: OK" 探活（带超时与并发上限）；
- *   - 按上下文窗口 + 模态 + 实测延迟给模型分级/打标签；
+ *   - 分级不再只看上下文：榜单分（联网搜索 / 内置快照）+ 上下文分 + 版本新鲜度 加权；
  *   - 把结果写 ~/.dsh/kilo-models/state.json（前端读它）；
  *   - 可选把选中的模型写回 ~/.dsh/profiles/desktop/cordis.patch.yml 的 llm-pi-ai.providers.kilo.models（带备份）。
  *   - HTTP API：GET/POST /dsh-kilo-models
- *
- * 为什么要有它：DSH 的模型清单是静态写死在 cordis.patch.yml 里的，上游随时下架/转付费
- * （2026-10-24 的 minimax-m3.1-flash:free 就是这么 400 的）。这个插件把"拉清单→探活→写回"
- * 变成设置页里的一个按钮。
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -24,11 +20,17 @@ const DEFAULT_BASE = 'https://api.kilo.ai/api/gateway'
 const PROBE_TIMEOUT_MS = 20000
 const LIST_TIMEOUT_MS = 30000
 const CONCURRENCY = 4
+const STATE_VERSION = 3
+
+/** 分级权重：有榜单分时用完整权重，没有时把榜单的份额让给上下文。 */
+const WEIGHTS = { rank: 0.5, ctx: 0.35, fresh: 0.15 }
+const WEIGHTS_NO_RANK = { ctx: 0.7, fresh: 0.3 }
 
 const dshHome = () => process.env.DSH_HOME || join(homedir(), '.dsh')
 const stateDir = () => join(dshHome(), 'kilo-models')
 const statePath = () => join(stateDir(), 'state.json')
 const configPath = () => join(dshHome(), 'profiles', 'desktop', 'cordis.patch.yml')
+const rankingsPath = () => new URL('./data/rankings.json', import.meta.url)
 
 function log(...args) {
   console.log('[kilo-models]', ...args)
@@ -86,6 +88,15 @@ function displayName(row, id) {
   return typeof n === 'string' && n.trim() ? n.trim() : id
 }
 
+/** 上游 created 是 unix 秒；转 ISO，拿不到就 null。 */
+function pickCreated(row) {
+  const t = num(row.created)
+  if (!t) return null
+  const ms = t > 1e12 ? t : t * 1000
+  const d = new Date(ms)
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null
+}
+
 async function fetchListing() {
   const key = apiKey()
   if (!key) throw new Error('缺少 KILO_API_KEY（环境变量或 ~/.dsh/.credentials.yaml）')
@@ -108,6 +119,7 @@ async function fetchListing() {
         maxOut: pickMaxOut(row),
         mods: pickMods(row),
         free: isFree(row),
+        created: pickCreated(row),
         // 上游给的到期日（如 2026-10-31），null 表示不限期
         expires: typeof row.expiration_date === 'string' && row.expiration_date ? row.expiration_date : null,
         // 免费池都会提示"可能拿你的 prompt 训练"，显式记下来给界面用
@@ -168,17 +180,139 @@ async function probeModel(modelId) {
   }
 }
 
+// ---------------- 榜单 ----------------
+
+/** 内置快照：data/rankings.json（家族 → 参考分 0–100，人工整理，非精确 Elo）。 */
+function bundledLeaderboard() {
+  try {
+    const raw = readFileSync(rankingsPath(), 'utf8')
+    const data = JSON.parse(raw)
+    const entries = Array.isArray(data.entries) ? data.entries : []
+    return {
+      source: 'bundled',
+      at: data.updated || null,
+      note: data.note || '内置快照',
+      entries: entries
+        .map((e) => ({ match: String(e.match || '').toLowerCase(), score: Number(e.score) }))
+        .filter((e) => e.match && Number.isFinite(e.score)),
+    }
+  } catch {
+    return { source: 'bundled', at: null, note: '缺少 data/rankings.json', entries: [] }
+  }
+}
+
+const FAMILIES = [
+  'nemotron', 'laguna', 'north', 'lfm', 'dots', 'flint', 'glyph',
+  'xingchen', 'kimi', 'deepseek', 'qwen', 'glm', 'minimax', 'mistral', 'llama', 'gpt',
+]
+
+/**
+ * 从联网搜索结果里抠分数：在家族名之后 90 字符内找第一个 3–4 位数，把 1000–1600 当 Elo 折算成 0–100。
+ * 只认已知家族；数字必须紧跟在家族名后面（否则会把前一个家族的分算到后一个头上）。
+ */
+function parseLeaderboard(sources) {
+  const text = (sources || []).map((s) => `${s.title || ''} ${s.snippet || ''}`).join('\n')
+  const out = new Map()
+  const lower = text.toLowerCase()
+  for (const fam of FAMILIES) {
+    let from = 0
+    while (true) {
+      const at = lower.indexOf(fam, from)
+      if (at < 0) break
+      from = at + fam.length
+      const seg = text.slice(at + fam.length, at + fam.length + 90)
+      const m = /(?<!\d)(\d{3,4})(?!\d)/.exec(seg)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n) || n < 950 || n > 1600) continue
+      const score = Math.max(0, Math.min(100, Math.round((n - 950) / 6)))
+      // 同一家族保留最高的一次命中
+      if (!out.has(fam) || (out.get(fam).score || 0) < score) out.set(fam, { match: fam, score, raw: n })
+    }
+  }
+  return [...out.values()]
+}
+
+/** 联网查榜单（走 ctx.web.search，DeepSeek 原生搜索）；失败返回 null，由调用方回落内置快照。 */
+async function webLeaderboard(ctx) {
+  const web = ctx?.web ?? (typeof ctx?.get === 'function' ? ctx.get('web') : undefined)
+  if (!web || typeof web.search !== 'function') return null
+  try {
+    const result = await web.search({
+      query: 'LMArena leaderboard top models Elo scores 2026 open weights',
+      maxResults: 8,
+    })
+    const entries = parseLeaderboard(result?.sources || [])
+    return {
+      source: 'web',
+      at: new Date().toISOString(),
+      note: `DeepSeek 联网搜索：${(result?.sources || []).length} 条来源，抠出 ${entries.length} 个家族分数`,
+      entries,
+    }
+  } catch (err) {
+    log('联网查榜单失败：', String(err?.message || err))
+    return null
+  }
+}
+
+function mergeLeaderboard(bundled, live) {
+  const map = new Map()
+  for (const e of bundled?.entries || []) map.set(e.match, { ...e, from: 'bundled' })
+  for (const e of live?.entries || []) map.set(e.match, { ...e, from: 'web' })
+  const entries = [...map.values()]
+  const source = live?.entries?.length ? 'web' : (bundled?.entries?.length ? 'bundled' : 'none')
+  return {
+    source,
+    at: live?.entries?.length ? live.at : (bundled?.at || null),
+    note: [bundled?.note, live?.note].filter(Boolean).join('；'),
+    entries,
+  }
+}
+
 // ---------------- 分级 ----------------
 
 const TIER_ORDER = { S: 0, A: 1, B: 2, C: 3, X: 9 }
 
-function tierOf(ctx, ok) {
-  if (!ok) return { key: 'X', label: '不可用' }
-  if (!ctx) return { key: 'B', label: '中量' }
-  if (ctx >= 1_000_000) return { key: 'S', label: '旗舰' }
-  if (ctx >= 512_000) return { key: 'A', label: '主力+' }
-  if (ctx >= 256_000) return { key: 'A', label: '主力' }
-  if (ctx >= 128_000) return { key: 'B', label: '中量' }
+function ctxScore(ctx) {
+  if (!ctx) return 45
+  if (ctx >= 1_000_000) return 85
+  if (ctx >= 512_000) return 72
+  if (ctx >= 256_000) return 62
+  if (ctx >= 128_000) return 50
+  if (ctx >= 64_000) return 38
+  return 28
+}
+
+function freshScore(created) {
+  if (!created) return 50
+  const days = (Date.now() - Date.parse(created)) / 86_400_000
+  if (!Number.isFinite(days)) return 50
+  if (days <= 180) return 95
+  if (days <= 365) return 80
+  if (days <= 730) return 60
+  return 45
+}
+
+/** 在榜单里找这条模型：先精确 id，再家族前缀，再名字片段；同类命中优先联网结果。 */
+function rankScoreOf(leaderboard, model) {
+  const entries = leaderboard?.entries || []
+  if (!entries.length) return null
+  const id = String(model.id || '').toLowerCase()
+  const name = String(model.name || '').toLowerCase()
+  const preferWeb = (list) => {
+    if (!list.length) return null
+    const web = list.find((e) => e.from === 'web')
+    return web || list[0]
+  }
+  const exact = entries.filter((e) => e.match === id)
+  if (exact.length) return preferWeb(exact)
+  return preferWeb(entries.filter((e) => id.includes(e.match) || name.includes(e.match)))
+}
+
+function tierByScore(score) {
+  if (score >= 75) return { key: 'S', label: '旗舰' }
+  if (score >= 60) return { key: 'A', label: '主力' }
+  if (score >= 45) return { key: 'B', label: '中量' }
   return { key: 'C', label: '轻量' }
 }
 
@@ -188,6 +322,7 @@ function tagsOf(m, probe) {
   if (mods.includes('image')) tags.push('视觉')
   if (mods.includes('video')) tags.push('视频')
   if (mods.includes('audio')) tags.push('音频')
+  if (mods.includes('image') && (mods.includes('video') || mods.includes('audio'))) tags.push('多模态')
   if (/code|coder|swe|devstral|laguna|north-mini|flint|poolside|qwen.*cod/i.test(`${m.id} ${m.name}`)) tags.push('代码')
   if (/content-safety|guard|moderation/i.test(m.id)) tags.push('审核')
   if (/kilo-auto/i.test(m.id)) tags.push('自动选型')
@@ -206,16 +341,37 @@ function daysLeft(dateStr) {
   return Math.ceil((t - Date.now()) / 86_400_000)
 }
 
-function classify(models) {
+function classify(models, leaderboard) {
   return models.map((m) => {
-    // 只有探活失败才算不可用；没探测过的仍按上下文给等级，界面显示「未测」
     const usable = m.status !== 'fail'
-    const tier = tierOf(m.ctx, usable)
-    return { ...m, tier: tier.key, tierLabel: tier.label, tags: tagsOf(m, m.probe) }
+    const rank = rankScoreOf(leaderboard, m)
+    const cs = ctxScore(m.ctx)
+    const fs = freshScore(m.created)
+    let score
+    let reason
+    if (rank) {
+      score = WEIGHTS.rank * rank.score + WEIGHTS.ctx * cs + WEIGHTS.fresh * fs
+      reason = `榜 ${rank.score}·上下文 ${cs}·新 ${fs}` + (rank.from === 'web' ? '（联网）' : '')
+    } else {
+      score = WEIGHTS_NO_RANK.ctx * cs + WEIGHTS_NO_RANK.fresh * fs
+      reason = `上下文 ${cs}·新 ${fs}（无榜单分）`
+    }
+    const rounded = Math.round(score)
+    const tier = usable ? tierByScore(rounded) : { key: 'X', label: '不可用' }
+    return {
+      ...m,
+      score: rounded,
+      rank: rank ? rank.score : null,
+      rankFrom: rank ? rank.from : null,
+      tier: tier.key,
+      tierLabel: tier.label,
+      tierReason: reason,
+      tags: tagsOf(m, m.probe),
+    }
   }).sort((a, b) => {
     const t = TIER_ORDER[a.tier] - TIER_ORDER[b.tier]
     if (t !== 0) return t
-    return (b.ctx || 0) - (a.ctx || 0) || a.id.localeCompare(b.id)
+    return (b.score || 0) - (a.score || 0) || (b.ctx || 0) - (a.ctx || 0) || a.id.localeCompare(b.id)
   })
 }
 
@@ -223,7 +379,7 @@ function classify(models) {
 
 let inFlight = null
 
-async function runRefresh({ probe = true } = {}) {
+async function runRefresh(ctx, { probe = true, leaderboard = true } = {}) {
   const started = Date.now()
   const rows = await fetchListing()
   const free = rows.filter((r) => r.free)
@@ -246,29 +402,55 @@ async function runRefresh({ probe = true } = {}) {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, models.length) }, worker))
   }
 
+  let board = mergeLeaderboard(bundledLeaderboard(), null)
+  if (leaderboard) {
+    const live = await webLeaderboard(ctx)
+    if (live && live.entries.length) board = mergeLeaderboard(bundledLeaderboard(), live)
+    else if (live) board = { ...mergeLeaderboard(bundledLeaderboard(), live), note: `${board.note}；联网结果未解析出分数，按内置快照` }
+  }
+
   const state = {
-    version: 2,
+    version: STATE_VERSION,
     base: baseUrl(),
     at: new Date().toISOString(),
     durationMs: Date.now() - started,
     probed,
     total: rows.length,
     freeCount: free.length,
-    models: classify(models),
+    leaderboard: board,
+    models: classify(models, board),
   }
   mkdirSync(stateDir(), { recursive: true })
   writeFileSync(statePath(), JSON.stringify(state, null, 2), 'utf8')
-  log(`刷新完成：${state.freeCount} 个免费模型，探活 ${probed} 个，用时 ${state.durationMs}ms`)
+  log(`刷新完成：${state.freeCount} 个免费模型，探活 ${probed} 个，榜单 ${board.source}，用时 ${state.durationMs}ms`)
   return state
 }
 
 function readState() {
-  if (!existsSync(statePath())) return { version: 2, at: null, models: [] }
+  if (!existsSync(statePath())) return { version: STATE_VERSION, at: null, models: [] }
   try {
     return JSON.parse(readFileSync(statePath(), 'utf8'))
   } catch {
-    return { version: 2, at: null, models: [], error: 'state.json 解析失败' }
+    return { version: STATE_VERSION, at: null, models: [], error: 'state.json 解析失败' }
   }
+}
+
+/** 只重查榜单并重算分级（不重新拉清单、不探活）。 */
+async function refreshLeaderboard(ctx) {
+  const state = readState()
+  if (!state.models?.length) throw new Error('还没有模型清单，先刷新一次')
+  const live = await webLeaderboard(ctx)
+  const board = live && live.entries.length
+    ? mergeLeaderboard(bundledLeaderboard(), live)
+    : { ...mergeLeaderboard(bundledLeaderboard(), live), note: '联网结果未解析出分数，按内置快照' }
+  state.leaderboard = board
+  state.models = classify(state.models, board)
+  state.version = STATE_VERSION
+  state.leaderboardAt = new Date().toISOString()
+  mkdirSync(stateDir(), { recursive: true })
+  writeFileSync(statePath(), JSON.stringify(state, null, 2), 'utf8')
+  log(`榜单已更新：来源 ${board.source}，${board.entries.length} 条`)
+  return state
 }
 
 // ---------------- 写回配置 ----------------
@@ -380,7 +562,7 @@ function readBody(req) {
   })
 }
 
-async function handle(req, res) {
+async function handle(ctx, req, res) {
   if (denyNonLoopback(req, res)) return
   if (req.method === 'GET') {
     send(res, { ok: true, state: readState() })
@@ -390,8 +572,16 @@ async function handle(req, res) {
   const op = String(body.op || '')
   try {
     if (op === 'refresh') {
-      const state = await (inFlight ?? (inFlight = runRefresh({ probe: body.probe !== false })))
+      const state = await (inFlight ?? (inFlight = runRefresh(ctx, {
+        probe: body.probe !== false,
+        leaderboard: body.leaderboard !== false,
+      })))
       inFlight = null
+      send(res, { ok: true, state })
+      return
+    }
+    if (op === 'leaderboard') {
+      const state = await refreshLeaderboard(ctx)
       send(res, { ok: true, state })
       return
     }
@@ -422,7 +612,7 @@ export function apply(ctx) {
   ctx.effect(() => webServer.register({
     kind: 'exact',
     path: '/dsh-kilo-models',
-    handler: handle,
+    handler: (req, res) => handle(ctx, req, res),
   }), 'kilo-models: /dsh-kilo-models API')
   log(`已挂载 /dsh-kilo-models（${baseUrl()}）`)
 }
